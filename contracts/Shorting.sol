@@ -42,10 +42,10 @@ contract Shorting is Ownable {
   event Traded();
   event Liquidated();
   
-  function Shorting(address _kyberNetworkAddress, address _tokenOracleAddress, address _ownersAddress) public {
+  function Shorting(address _kyberNetworkAddress, address _tokenOracleAddress) public {
     kyberNetwork = KyberNetworkInterface(_kyberNetworkAddress);
     tokenOracle = TokenOracleInterface(_tokenOracleAddress);
-    ownersAddress = _ownersAddress;
+    ownersAddress = msg.sender;
   }
   
   /*
@@ -60,6 +60,8 @@ contract Shorting is Ownable {
     require(now < orderExpiration);
     
     // create hash of the order to store it and validate the order (not yet)
+    // note that in development this hash should include the lenders signature
+    // and a nonce in case of multiple duplicate orders
     bytes32 hash = validate(lenderAddress, lentAmount, lentToken, shorterAddress,
                             stakedAmount, stakedToken);
     
