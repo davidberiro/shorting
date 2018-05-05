@@ -22,10 +22,15 @@ contract Shorting {
     uint256 shortExpiration;
   }
   
-  // Mapping of order hash to bool (true = short position was closed)
+  // mapping of order hash to bool (true = short position was closed)
   mapping (bytes32 => bool) public closedShorts;
-  // Mapping of order hash to Short struct
+  // mapping of order hash to Short struct
   mapping (bytes32 => Short) public shorts;
+  
+  // Events that are emitted in certain scenarios (TODO)
+  event Filled();
+  event Cancelled();
+  event Liquidated();
   
   /*
   * fills an order and creates a short position without validating the order
@@ -38,13 +43,16 @@ contract Shorting {
                   
     // checking that the order hasnt expired
     require(now < orderExpiration);
+    
     // create hash of the order to store it and validate the order (not yet)
     bytes32 hash = validate(lenderAddress, lentAmount, lentToken, shorterAddress,
                             stakedAmount, stakedToken);
+    
     // assert that all the required tokens were transferred to this contract
     assert(acquire(lenderAddress, lentAmount, lentToken, shorterAddress,
                    stakedAmount, stakedToken));
     
+    // creating hash in shorts mapping
     shorts[hash] = Short(shorterAddress, lenderAddress, lentToken, null, stakedToken,
                          lentAmount, stakedAmount, 0, shortExpiration);
     
@@ -58,6 +66,7 @@ contract Shorting {
   * can cover less than a certain percentage of losses
   */
   function closePosition(bytes32 orderHash) public {
+    
     // require that the position hasn't already been closed
     require(!closedShorts[orderHash]);    
   }
@@ -71,6 +80,7 @@ contract Shorting {
   * perhaps if the shorter makes a profit we take a cut
   */
   function liquidate(bytes32 orderHash) private {
+    
   }
   
   /*
@@ -80,6 +90,7 @@ contract Shorting {
   function acquire(address lenderAddress, uint256 lentAmount, address lentToken,
                    address shorterAddress, uint256 stakedAmount, address stakedToken)
                    private returns (bool) {
+    
     return (transfer(lenderAddress, thisAddress, lentAmount, lentToken) &&
             transfer(shorterAddress, thisAddress, stakedAmount, stakedToken));
                         
@@ -94,14 +105,18 @@ contract Shorting {
                     address shorterAddress, uint256 stakedAmount, address stakedToken)
                     private returns (bytes32) {
     
-    bytes32 hashV = keccak256(lenderAddress, lentAmount, lentToken, shorterAddress,
-                              stakedAmount, stakedToken);
+    // create hash from the order details, should add nonce at the end (TODO)
+    bytes32 hashV = keccak256(lenderAddress, lentAmount, lentToken, shorterAddress, stakedAmount, stakedToken);
+    
     return hashV;
   }
 
-  
+  /*  
+  * transfers ERC20 tokens and returns true upon success
+  */
   function transfer(address from, address to, uint amount, address token) 
                     private returns (bool) {
+      
       require(ERC20(token).transferFrom(from, to, amount));
       return true;
   }
