@@ -87,7 +87,7 @@ contract Shorting is Ownable {
     ERC20 src = shorts[orderHash].lentToken;
     uint srcAmount = shorts[orderHash].lentAmount;
     
-    // approve the trade and do it
+    // approve the trade and do it (TODO)
     src.approve(kyberNetwork, srcAmount);
     
   }
