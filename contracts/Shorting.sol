@@ -171,7 +171,7 @@ contract Shorting is Ownable {
   }
   
   /*  
-  * validates order arguments, should also receive signature of lender
+  * validates order arguments, should also receive signature of lender as arg
   * but for testing purposes this will do. In production should receive
   * some signatures of order and nonce
   */
@@ -181,6 +181,8 @@ contract Shorting is Ownable {
     
     // create hash from the order details, should add nonce at the end (TODO)
     bytes32 hashV = keccak256(lenderAddress, lentAmount, lentToken, shorterAddress, stakedAmount, stakedToken);
+    
+    // should require that the signature of the lender is legitimate
     
     return hashV;
   }
@@ -195,7 +197,7 @@ contract Shorting is Ownable {
       return true;
   }
   
-  // fills an order by verifying it (TODO), 
+  // how the fill function should look in production
   /* function fill(address lenderAddress, uint256 lentAmount, address lentToken,
                 address shorterAddress, uint256 stakedAmount, address stakedToken,
                 uint256 expiration, uint256 nonce, uint8 v, bytes32 r, bytes32 s) payable {
