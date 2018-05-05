@@ -1,13 +1,20 @@
 pragma solidity ^0.4.18;
 
 import {StandardToken as ERC20} from "./lib/ERC20/StandardToken.sol";
+import "./lib/kyber/KyberNetworkInterface.sol";
+import "./TokenOracleInterface.sol";
+import "./lib/helpers/Ownable.sol";
 
 /*
 * assumes shorter and lender have approved this contract to access their balances  
 */
-contract Shorting {
+contract Shorting is Ownable {
   
   address private thisAddress = address(this);
+
+  KyberNetworkInterface public kyberNetwork;
+  TokenOracleInterface public tokenOracle;
+  address private ownersAddress;
   
   // struct representing a short between lender and shorter
   struct Short {
@@ -27,10 +34,19 @@ contract Shorting {
   // mapping of order hash to Short struct
   mapping (bytes32 => Short) public shorts;
   
+  
+  
   // Events that are emitted in certain scenarios (TODO)
   event Filled();
   event Cancelled();
+  event Traded();
   event Liquidated();
+  
+  function Shorting(address _kyberNetworkAddress, address _tokenOracleAddress, address _ownersAddress) public {
+    kyberNetwork = KyberNetworkInterface(_kyberNetworkAddress);
+    tokenOracle = TokenOracleInterface(_tokenOracleAddress);
+    ownersAddress = _ownersAddress;
+  }
   
   /*
   * fills an order and creates a short position without validating the order
@@ -38,8 +54,7 @@ contract Shorting {
   */
   function fill(address lenderAddress, uint256 lentAmount, address lentToken,
                 address shorterAddress, uint256 stakedAmount, address stakedToken,
-                uint256 orderExpiration, uint256 shortExpiration)
-                public payable {
+                uint256 orderExpiration, uint256 shortExpiration) public payable {
                   
     // checking that the order hasnt expired
     require(now < orderExpiration);
@@ -55,6 +70,23 @@ contract Shorting {
     // creating hash in shorts mapping
     shorts[hash] = Short(shorterAddress, lenderAddress, lentToken, null, stakedToken,
                          lentAmount, stakedAmount, 0, shortExpiration);
+                         
+    Filled();
+    
+  }
+  
+  function purchase(ERC20 dest, bytes32 orderHash) public {
+    // only the shorter can trade the borrowed tokens
+    require(msg.sender == shorts[orderHash].shorter);
+    
+    // require that the shorter hasn't bought any tokens yet
+    require(shorts[orderHash].boughtAmount == 0);
+    
+    ERC20 src = shorts[orderHash].lentToken;
+    uint srcAmount = shorts[orderHash].lentAmount;
+    
+    // approve the trade and do it
+    src.approve(kyberNetwork, srcAmount);
     
   }
   
@@ -68,7 +100,36 @@ contract Shorting {
   function closePosition(bytes32 orderHash) public {
     
     // require that the position hasn't already been closed
-    require(!closedShorts[orderHash]);    
+    require(!closedShorts[orderHash]);
+    
+    // require that the short position exists (is this necessary?)
+    require(shorts[orderHash] != 0);
+    
+    // allow shorter to close the position whenever they want
+    if (msg.sender == shorts[orderHash].shorter) {
+      liquidate(orderHash, msg.sender);
+      return;
+    }
+    
+    // if the lender wants to close the position, check if the time expired
+    // or that the losses are too much
+    if (msg.sender == shorts[orderHash].lender) {
+      
+      // if the expiration has passed, liquidate the position
+      if (now > shorts[orderHash].shortExpiration) {
+          liquidate(orderHash, msg.sender);
+          return;
+      }
+      
+      // if the lender can liquidate the position because of the shorters losses
+      if (lenderCanLiquidate(orderHash)) {
+        liquidate(orderHash, msg.sender);
+        return;
+      }
+    }
+    
+    // TODO allow public to close position if certain threshold is reached
+        
   }
   
   /*
@@ -78,8 +139,19 @@ contract Shorting {
   * that too), repays the lender (lending fee was payed before? or maybe interest
   * will be payed now). Whatever is left over is returned to the shorter, and
   * perhaps if the shorter makes a profit we take a cut
+  * note that the liquidator argument is needed for the Liquidated event
+  * so that we know who called it
   */
-  function liquidate(bytes32 orderHash) private {
+  function liquidate(bytes32 orderHash, address liquidator) private {
+    
+  }
+  
+  /*
+  * checks if the short position can be liquidated by the lender, must check
+  * the conversion rate of the boughtToken and stakedToken into lentToken
+  * and see if a certain threshold is passed  
+  */
+  function lenderCanLiquidate(bytes32 orderHash) private returns (bool) {
     
   }
   

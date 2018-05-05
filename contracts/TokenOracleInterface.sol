@@ -1,6 +1,6 @@
 pragma solidity ^0.4.18;
 
-import "./lib/ERC20/ERC20.sol";
+import {StandardToken as ERC20} from "./lib/ERC20/StandardToken.sol";
 
 contract TokenOracleInterface {
   function convert(ERC20 _from, ERC20 _to, uint256 _amount) public view returns (uint256);

@@ -3,7 +3,7 @@ pragma solidity ^0.4.21;
 import "./TokenOracleInterface.sol";
 import "./lib/helpers/Ownable.sol";
 import "./lib/helpers/SafeMath.sol";
-import "./lib/ERC20/ERC20.sol";
+import {StandardToken as ERC20} from "./lib/ERC20/StandardToken.sol";
 
 // TODO remove this afterwards
 import "./lib/helpers/Debuggable.sol";
