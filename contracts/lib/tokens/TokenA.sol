@@ -1,13 +1,13 @@
 pragma solidity ^0.4.11;
 
-import "./StandardToken.sol";
+import "../ERC20/StandardToken.sol";
 import "../helpers/SafeMath.sol";
 
 // standard token and allows for
-contract TokenB is StandardToken {
+contract TokenA is StandardToken {
   using SafeMath for uint;
   address public minter;
-  function TokenB() {
+  function TokenA() {
     minter = msg.sender;
   }
   function create(address account, uint amount) {

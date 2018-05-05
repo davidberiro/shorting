@@ -49,6 +49,18 @@ contract Shorting is Ownable {
   }
   
   /*
+  * closes and liquidates the short position, can be called any time by the
+  * shorter, or if the staked amount can only cover < 50% of the losses caused
+  * by buying the boughtToken it can be called by the lender. Maybe will allow option
+  * for position to be closed by the public for a small reward if the staked amount
+  * can cover less than a certain percentage of losses
+  */
+  function liquidate(bytes32 orderHash) public {
+    // require that the position hasn't already been closed
+    require(!closedShorts[orderHash]);
+  }
+  
+  /*
   * transfers the lent amount of ERC20 token and staked amount of ERC20 token
   * to this contract  
   */
