@@ -20,9 +20,9 @@ contract Shorting is Ownable {
   struct Short {
     address shorter;
     address lender;
-    ERC20 lentToken;
-    ERC20 boughtToken;
-    ERC20 stakedToken;
+    address lentToken;
+    address boughtToken;
+    address stakedToken;
     uint256 lentAmount;
     uint256 stakedAmount;
     uint256 boughtAmount;
@@ -66,11 +66,10 @@ contract Shorting is Ownable {
                             stakedAmount, stakedToken);
     
     // assert that all the required tokens were transferred to this contract
-    assert(acquire(lenderAddress, lentAmount, lentToken, shorterAddress,
-                   stakedAmount, stakedToken));
+    assert(acquire(lenderAddress, lentAmount, lentToken, shorterAddress, stakedAmount, stakedToken));
     
     // creating hash in shorts mapping
-    shorts[hash] = Short(shorterAddress, lenderAddress, lentToken, null, stakedToken,
+    shorts[hash] = Short(shorterAddress, lenderAddress, lentToken, 0, stakedToken,
                          lentAmount, stakedAmount, 0, shortExpiration);
                          
     Filled();
@@ -84,7 +83,7 @@ contract Shorting is Ownable {
     // require that the shorter hasn't bought any tokens yet
     require(shorts[orderHash].boughtAmount == 0);
     
-    ERC20 src = shorts[orderHash].lentToken;
+    ERC20 src = ERC20(shorts[orderHash].lentToken);
     uint srcAmount = shorts[orderHash].lentAmount;
     
     // approve the trade and do it (TODO)
@@ -105,7 +104,7 @@ contract Shorting is Ownable {
     require(!closedShorts[orderHash]);
     
     // require that the short position exists (is this necessary?)
-    require(shorts[orderHash] != 0);
+    /* require(shorts[orderHash] != 0); */
     
     // allow shorter to close the position whenever they want
     if (msg.sender == shorts[orderHash].shorter) {
@@ -119,14 +118,12 @@ contract Shorting is Ownable {
       
       // if the expiration has passed, liquidate the position
       if (now > shorts[orderHash].shortExpiration) {
-          liquidate(orderHash, msg.sender);
-          return;
+          return liquidate(orderHash, msg.sender);
       }
       
       // if the lender can liquidate the position because of the shorters losses
       if (lenderCanLiquidate(orderHash)) {
-        liquidate(orderHash, msg.sender);
-        return;
+        return liquidate(orderHash, msg.sender);
       }
     }
     

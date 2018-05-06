@@ -1,7 +1,7 @@
 pragma solidity ^0.4.19;
 
 import "./KyberNetworkInterface.sol";
-import "../TokenOracleInterface.sol";
+import "../../TokenOracleInterface.sol";
 import "../helpers/Ownable.sol"; 
 
 contract KyberNetwork is KyberNetworkInterface, Ownable {
