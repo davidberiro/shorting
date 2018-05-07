@@ -6,7 +6,9 @@ import "./TokenOracleInterface.sol";
 import "./lib/helpers/Ownable.sol";
 
 /*
-* assumes shorter and lender have approved this contract to access their balances  
+* assumes shorter and lender have approved this contract to access their balances
+* maybe instead the lender will have to deposit directly to this contract with
+* the lending conditions, will figure that out later  
 */
 contract Shorting is Ownable {
   

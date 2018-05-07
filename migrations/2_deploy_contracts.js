@@ -7,15 +7,18 @@ var TokenB = artifacts.require("./lib/tokens/TokenB.sol");
 
 module.exports = function(deployer, network, accounts) {
   
+  // accounts[0] is the owner/minter of every contract by default (I think?)
+  const user1 = accounts[1]
+  const user2 = accounts[2]
+  
   deployer.deploy([
     [TokenA],
-    [TokenB],
-    [Shorting],
+    [TokenB]
   ]).then(() => {
-    deployer.deploy(TokenOracle, TokenA.address)
+    return deployer.deploy(TokenOracle, TokenA.address)
   }).then(() => {
-    deployer.deploy(KyberNetwork, TokenOracle.address)
+    return deployer.deploy(KyberNetwork, TokenOracle.address)
   }).then(() => {
-    //set token rates (TODO) for testing purposes
+    return deployer.deploy(Shorting, KyberNetwork.address, TokenOracle.address)
   })
 };
