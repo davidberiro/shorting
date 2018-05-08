@@ -1,5 +1,5 @@
-pragma solidity ^0.4.18;
 
+pragma solidity ^0.4.18;
 import {StandardToken as ERC20} from "./lib/ERC20/StandardToken.sol";
 import "./lib/kyber/KyberNetworkInterface.sol";
 import "./TokenOracleInterface.sol";
@@ -16,6 +16,7 @@ contract Shorting is Ownable {
 
   KyberNetworkInterface public kyberNetwork;
   TokenOracleInterface public tokenOracle;
+  // address to send profits to
   address private ownersAddress;
   
   // struct representing a short between lender and shorter
@@ -39,10 +40,12 @@ contract Shorting is Ownable {
   
   
   // Events that are emitted in certain scenarios (TODO)
-  event Filled();
+  event Filled(address lender, uint256 lentAmount, address lentToken, address shorter, uint256 stakedAmount, address stakedToken, uint256 expiration, bytes32 hash);
   event Cancelled();
   event Traded();
   event Liquidated();
+  
+  event Failed();
   
   function Shorting(address _kyberNetworkAddress, address _tokenOracleAddress) public {
     kyberNetwork = KyberNetworkInterface(_kyberNetworkAddress);
@@ -51,30 +54,29 @@ contract Shorting is Ownable {
   }
   
   /*
-  * fills an order and creates a short position without validating the order
-  * (for development purposes, in production would have to verify like AirSwap)  
+  * fills an order and creates a short position  
   */
   function fill(address lenderAddress, uint256 lentAmount, address lentToken,
                 address shorterAddress, uint256 stakedAmount, address stakedToken,
-                uint256 orderExpiration, uint256 shortExpiration) public payable {
+                uint256 orderExpiration, uint256 shortExpiration, uint256 nonce,
+                uint8 v, bytes32 r, bytes32 s) public payable {
                   
     // checking that the order hasnt expired
     require(now < orderExpiration);
     
-    // create hash of the order to store it and validate the order (not yet)
-    // note that in development this hash should include the lenders signature
-    // and a nonce in case of multiple duplicate orders
-    bytes32 hash = validate(lenderAddress, lentAmount, lentToken, shorterAddress,
-                            stakedAmount, stakedToken);
+    // create hash of the order to store it and validate the order
+    bytes32 hashV = validate(lenderAddress, lentAmount, lentToken, shorterAddress,
+                            stakedAmount, stakedToken, orderExpiration, shortExpiration,
+                            nonce, v, r, s);
     
     // assert that all the required tokens were transferred to this contract
     assert(acquire(lenderAddress, lentAmount, lentToken, shorterAddress, stakedAmount, stakedToken));
     
-    // creating hash in shorts mapping
-    shorts[hash] = Short(shorterAddress, lenderAddress, lentToken, 0, stakedToken,
+    // creating key for short via the hash of the order in shorts mapping
+    shorts[hashV] = Short(shorterAddress, lenderAddress, lentToken, 0, stakedToken,
                          lentAmount, stakedAmount, 0, shortExpiration);
                          
-    Filled();
+    Filled(lenderAddress, lentAmount, lentToken, shorterAddress, stakedAmount, stakedToken, shortExpiration, hashV);
     
   }
   
@@ -91,6 +93,10 @@ contract Shorting is Ownable {
     // approve the trade and do it (TODO)
     src.approve(kyberNetwork, srcAmount);
     
+    uint256 receivedAmount = kyberNetwork.trade(src, srcAmount, dest, thisAddress, 0, 0, 0);
+    shorts[orderHash].boughtToken = dest;
+    shorts[orderHash].boughtAmount = receivedAmount;
+    Traded();
   }
   
   /*
@@ -170,19 +176,20 @@ contract Shorting is Ownable {
   }
   
   /*  
-  * validates order arguments, should also receive signature of lender as arg
-  * but for testing purposes this will do. In production should receive
-  * some signatures of order and nonce
+  * validates order arguments for fill function using lenders signature
   */
   function validate(address lenderAddress, uint256 lentAmount, address lentToken,
-                    address shorterAddress, uint256 stakedAmount, address stakedToken)
-                    private returns (bytes32) {
+                    address shorterAddress, uint256 stakedAmount, address stakedToken,
+                    uint256 orderExpiration, uint256 shortExpiration, uint256 nonce,
+                    uint8 v, bytes32 r, bytes32 s) private returns (bytes32) {
     
     // create hash from the order details, should add nonce at the end (TODO)
-    bytes32 hashV = keccak256(lenderAddress, lentAmount, lentToken, shorterAddress, stakedAmount, stakedToken);
+    bytes32 hashV = keccak256(lenderAddress, lentAmount, lentToken, shorterAddress, stakedAmount, stakedToken, orderExpiration, shortExpiration, nonce);
     
-    // should require that the signature of the lender is legitimate
-    
+    bytes memory prefix = "\x19Ethereum Signed Message:\n32";    
+    bytes32 prefixedHash = sha3(prefix, hashV);
+    require(ecrecover(prefixedHash, v, r, s) == lenderAddress);
+
     return hashV;
   }
 
@@ -196,11 +203,4 @@ contract Shorting is Ownable {
       return true;
   }
   
-  // how the fill function should look in production
-  /* function fill(address lenderAddress, uint256 lentAmount, address lentToken,
-                address shorterAddress, uint256 stakedAmount, address stakedToken,
-                uint256 expiration, uint256 nonce, uint8 v, bytes32 r, bytes32 s) payable {
-  } */
-
-
 }
