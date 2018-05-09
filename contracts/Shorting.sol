@@ -1,9 +1,9 @@
-
-pragma solidity ^0.4.18;
+pragma solidity ^0.4.21;
 import {StandardToken as ERC20} from "./lib/ERC20/StandardToken.sol";
 import "./lib/kyber/KyberNetworkInterface.sol";
 import "./TokenOracleInterface.sol";
 import "./lib/helpers/Ownable.sol";
+import "./lib/helpers/SafeMath.sol";
 
 /*
 * assumes shorter and lender have approved this contract to access their balances
@@ -11,6 +11,7 @@ import "./lib/helpers/Ownable.sol";
 * the lending conditions, will figure that out later  
 */
 contract Shorting is Ownable {
+  using SafeMath for uint256;
   
   address private thisAddress = address(this);
 
@@ -75,8 +76,9 @@ contract Shorting is Ownable {
     // creating key for short via the hash of the order in shorts mapping
     shorts[hashV] = Short(shorterAddress, lenderAddress, lentToken, 0, stakedToken,
                          lentAmount, stakedAmount, 0, shortExpiration);
+    closedShorts[hashV] = false;
                          
-    Filled(lenderAddress, lentAmount, lentToken, shorterAddress, stakedAmount, stakedToken, shortExpiration, hashV);
+    emit Filled(lenderAddress, lentAmount, lentToken, shorterAddress, stakedAmount, stakedToken, shortExpiration, hashV);
     
   }
   
@@ -90,13 +92,13 @@ contract Shorting is Ownable {
     ERC20 src = ERC20(shorts[orderHash].lentToken);
     uint srcAmount = shorts[orderHash].lentAmount;
     
-    // approve the trade and do it (TODO)
+    // approve the trade and do it
     src.approve(kyberNetwork, srcAmount);
     
     uint256 receivedAmount = kyberNetwork.trade(src, srcAmount, dest, thisAddress, 0, 0, 0);
     shorts[orderHash].boughtToken = dest;
     shorts[orderHash].boughtAmount = receivedAmount;
-    Traded();
+    emit Traded();
   }
   
   /*
@@ -150,6 +152,54 @@ contract Shorting is Ownable {
   * so that we know who called it
   */
   function liquidate(bytes32 orderHash, address liquidator) private {
+    // Actual implementation of this function should take more factors into
+    // consideration, but for development purposes this will do. The main issue
+    // is that if the bought tokens price decreases relative to the lent token,
+    // even by just a little do we really have to convert all of the staked token 
+    // into lent token in order to repay the lender? food for thought...
+    // making me reconsider a bit of the foundation of the contract
+    ERC20 boughtToken = ERC20(shorts[orderHash].boughtToken);
+    ERC20 stakedToken = ERC20(shorts[orderHash].stakedToken);
+    ERC20 lentToken = ERC20(shorts[orderHash].lentToken);
+    uint boughtAmount = shorts[orderHash].boughtAmount;
+    uint stakedAmount = shorts[orderHash].stakedAmount;
+    uint lentAmount = shorts[orderHash].lentAmount;
+    address lender = shorts[orderHash].lender;
+    address shorter = shorts[orderHash].shorter;
+    
+    boughtToken.approve(kyberNetwork, boughtAmount);
+    uint256 receivedAmount = kyberNetwork.trade(boughtToken, boughtAmount, lentToken, thisAddress, 0, 0, 0);
+    
+    // If the shorter made a profit
+    if (receivedAmount >= lentAmount) {
+      // Return all the staked tokens
+      stakedToken.transfer(shorter, uint256(stakedAmount));
+      // Send the converted lent token profit to the shorter
+      // threw an error since standardtoken cant send 0 coins
+      if (receivedAmount - lentAmount > 0) {
+        lentToken.transfer(shorter, receivedAmount - lentAmount);        
+      }
+      // Send the lent amount back to the lender (when does he take a fee?)
+      lentToken.transfer(lender, uint256(lentAmount));
+      
+    }
+    
+    else {
+      uint256 loss = uint256(lentAmount).sub(receivedAmount);
+      // Convert staked token into lent token to cover loss
+      stakedToken.approve(kyberNetwork, stakedAmount);
+      uint256 received = kyberNetwork.trade(stakedToken, stakedAmount, lentToken, thisAddress, 0, 0, 0);
+      if (received.add(receivedAmount) < lentAmount) {
+        // Fatal error, lender cannot lose money, what do we do here..?
+        lentToken.transfer(lender, received.add(receivedAmount));
+        return;
+      }
+      uint256 leftOver = received.add(receivedAmount).sub(lentAmount);
+      lentToken.transfer(shorter, leftOver);
+      lentToken.transfer(lender, lentAmount);
+    }
+    
+    emit Liquidated();
     
   }
   

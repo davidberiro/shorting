@@ -65,7 +65,7 @@ contract("Shorting", async accounts => {
 		await tokenA.create(kyberNetwork.address, 1000);
 		await tokenB.create(kyberNetwork.address, 1000);
 		assert.equal(await tokenA.balanceOf(kyberNetwork.address), 1000);
-		// assert.equal(await tokenB.balanceOf(kyberNetwork.address), 1000);
+		assert.equal(await tokenB.balanceOf(kyberNetwork.address), 1000);
 	});
 
 	it("approves the shorting contract to withdraw 500 tokenA from user1", async () => {
@@ -102,18 +102,6 @@ contract("Shorting", async accounts => {
 		let shortExpiration = new Date().getTime() + 100000;
 		let nonce = 1;
 
-		// Message hash for signing
-		let message =
-			lenderAddress +
-			lentAmount +
-			lentToken +
-			shorterAddress +
-			stakedAmount +
-			stakedToken +
-			orderExpiration +
-			shortExpiration +
-			nonce;
-
 		const args = [
 			lenderAddress,
 			lentAmount,
@@ -138,7 +126,7 @@ contract("Shorting", async accounts => {
 		];
 
 		const msg = ABI.soliditySHA3(argTypes, args);
-    orderHash = util.bufferToHex(msg);
+		orderHash = util.bufferToHex(msg);
 		const sig = web3.eth.sign(lenderAddress, util.bufferToHex(msg));
 		const { v, r, s } = util.fromRpcSig(sig);
 
@@ -173,9 +161,22 @@ contract("Shorting", async accounts => {
 			from: user1
 		});
 		assert.ok(
-		  transaction.logs.find(log => {
-		    return log.event === "Traded";
-		  })
-		)
+			transaction.logs.find(log => {
+				return log.event === "Traded";
+			})
+		);
+		assert.equal(await tokenA.balanceOf(shorting.address), 350);
+		assert.equal(await tokenB.balanceOf(shorting.address), 0);
+	});
+
+	it("liquidates the position with the same 1-1 rate of A to B", async () => {
+		let transaction = await shorting.closePosition(orderHash, { from: user1 });
+		// assert.ok(
+		// 	transaction.logs.find(log => {
+		// 		return log.event === "Liquidated";
+		// 	})
+		// );
+		// assert.equal(await tokenA.balanceOf(user1), 1000);
+		// assert.equal(await tokenB.balanceOf(user2), 1000);
 	});
 });
