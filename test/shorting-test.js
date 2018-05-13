@@ -1,5 +1,6 @@
 require("babel-polyfill");
 const util = require("ethereumjs-util");
+const jsutil = require("./util.js");
 const ABI = require("ethereumjs-abi");
 
 var Shorting = artifacts.require("./Shorting.sol");
@@ -9,6 +10,13 @@ var TokenOracle = artifacts.require("./TokenOracle.sol");
 var KyberNetwork = artifacts.require("./lib/kyber/KyberNetwork.sol");
 
 contract("Shorting", async accounts => {
+	
+	// This only runs once across all test suites
+	before(() => jsutil.measureGas(accounts))
+	after(() => jsutil.measureGas(accounts))
+	
+	const eq = assert.equal.bind(assert)
+
 	const owner = accounts[0];
 	const user1 = accounts[1];
 	const user2 = accounts[2];
@@ -37,13 +45,13 @@ contract("Shorting", async accounts => {
 	it("deploys tokenA and transfers 1000 tokenA to user1", async () => {
 		tokenA = await TokenA.deployed();
 		await tokenA.create(user1, 1000);
-		assert.equal(await tokenA.balanceOf(user1), 1000);
+		eq(await tokenA.balanceOf(user1), 1000);
 	});
 
 	it("deploys tokenB and transfers 1000 tokenB to user2", async () => {
 		tokenB = await TokenB.deployed();
 		await tokenB.create(user2, 1000);
-		assert.equal(await tokenB.balanceOf(user2), 1000);
+		eq(await tokenB.balanceOf(user2), 1000);
 	});
 
 	it("deploys TokenOracle and sets 1-1 rate between token A and B", async () => {
@@ -64,8 +72,8 @@ contract("Shorting", async accounts => {
 		kyberNetwork = await KyberNetwork.deployed();
 		await tokenA.create(kyberNetwork.address, 1000);
 		await tokenB.create(kyberNetwork.address, 1000);
-		assert.equal(await tokenA.balanceOf(kyberNetwork.address), 1000);
-		assert.equal(await tokenB.balanceOf(kyberNetwork.address), 1000);
+		eq(await tokenA.balanceOf(kyberNetwork.address), 1000);
+		eq(await tokenB.balanceOf(kyberNetwork.address), 1000);
 	});
 
 	it("approves the shorting contract to withdraw 500 tokenA from user1", async () => {
@@ -150,10 +158,10 @@ contract("Shorting", async accounts => {
 				return log.event === "Filled";
 			})
 		);
-		assert.equal(await tokenA.balanceOf(shorting.address), 100);
-		assert.equal(await tokenB.balanceOf(shorting.address), 250);
-		assert.equal(await tokenA.balanceOf(user1), 900);
-		assert.equal(await tokenB.balanceOf(user2), 750);
+		eq(await tokenA.balanceOf(shorting.address), 100);
+		eq(await tokenB.balanceOf(shorting.address), 250);
+		eq(await tokenA.balanceOf(user1), 900);
+		eq(await tokenB.balanceOf(user2), 750);
 	});
 
 	it("allows user1 to trade the borrowed 250 tokenB as part of the short", async () => {
@@ -165,18 +173,18 @@ contract("Shorting", async accounts => {
 				return log.event === "Traded";
 			})
 		);
-		assert.equal(await tokenA.balanceOf(shorting.address), 350);
-		assert.equal(await tokenB.balanceOf(shorting.address), 0);
+		eq(await tokenA.balanceOf(shorting.address), 350);
+		eq(await tokenB.balanceOf(shorting.address), 0);
 	});
 
 	it("liquidates the position with the same 1-1 rate of A to B", async () => {
 		let transaction = await shorting.closePosition(orderHash, { from: user1 });
-		// assert.ok(
-		// 	transaction.logs.find(log => {
-		// 		return log.event === "Liquidated";
-		// 	})
-		// );
-		// assert.equal(await tokenA.balanceOf(user1), 1000);
-		// assert.equal(await tokenB.balanceOf(user2), 1000);
+		assert.ok(
+			transaction.logs.find(log => {
+				return log.event === "Liquidated";
+			})
+		);
+		eq(await tokenA.balanceOf(user1), 1000);
+		eq(await tokenB.balanceOf(user2), 1000);
 	});
 });

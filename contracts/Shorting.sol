@@ -46,7 +46,18 @@ contract Shorting is Ownable {
   event Traded();
   event Liquidated();
   
-  event Failed();
+  /* Event emitted when something fails
+  *  Error codes:
+  *  1-> 'The order has expired'
+  *  2-> 
+  *
+  *
+  *
+  *
+  */
+  event Failed(uint code, address lender, address lentToken, uint256 lentAmount, 
+              address shorter, address stakedToken, uint256 stakedAmount,
+              uint256 orderExpiration, uint256 shortExpiration, uint256 nonce);
   
   function Shorting(address _kyberNetworkAddress, address _tokenOracleAddress) public {
     kyberNetwork = KyberNetworkInterface(_kyberNetworkAddress);
@@ -63,7 +74,11 @@ contract Shorting is Ownable {
                 uint8 v, bytes32 r, bytes32 s) public payable {
                   
     // checking that the order hasnt expired
-    require(now < orderExpiration);
+    if (now > orderExpiration) {
+      Failed(1, lenderAddress, lentToken, lentAmount, shorterAddress, stakedToken,
+            stakedAmount, orderExpiration, shortExpiration, nonce);
+      return;
+    }
     
     // create hash of the order to store it and validate the order
     bytes32 hashV = validate(lenderAddress, lentAmount, lentToken, shorterAddress,
@@ -119,6 +134,7 @@ contract Shorting is Ownable {
     // allow shorter to close the position whenever they want
     if (msg.sender == shorts[orderHash].shorter) {
       liquidate(orderHash, msg.sender);
+      closedShorts[orderHash] = true;
       return;
     }
     
@@ -128,12 +144,16 @@ contract Shorting is Ownable {
       
       // if the expiration has passed, liquidate the position
       if (now > shorts[orderHash].shortExpiration) {
-          return liquidate(orderHash, msg.sender);
+          liquidate(orderHash, msg.sender);
+          closedShorts[orderHash] = true;
+          return;
       }
       
       // if the lender can liquidate the position because of the shorters losses
       if (lenderCanLiquidate(orderHash)) {
-        return liquidate(orderHash, msg.sender);
+        liquidate(orderHash, msg.sender);
+        closedShorts[orderHash] = true;
+        return;
       }
     }
     
