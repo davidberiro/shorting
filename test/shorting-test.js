@@ -10,12 +10,11 @@ var TokenOracle = artifacts.require("./TokenOracle.sol");
 var KyberNetwork = artifacts.require("./lib/kyber/KyberNetwork.sol");
 
 contract("Shorting", async accounts => {
-	
 	// This only runs once across all test suites
-	before(() => jsutil.measureGas(accounts))
-	after(() => jsutil.measureGas(accounts))
-	
-	const eq = assert.equal.bind(assert)
+	before(() => jsutil.measureGas(accounts));
+	after(() => jsutil.measureGas(accounts));
+
+	const eq = assert.equal.bind(assert);
 
 	const owner = accounts[0];
 	const user1 = accounts[1];
@@ -30,6 +29,66 @@ contract("Shorting", async accounts => {
 	let tokenA;
 	let tokenB;
 	let orderHash;
+	
+	async function fillShort(			
+				lenderAddress,
+				lentAmount,
+				lentToken,
+				shorterAddress,
+				stakedAmount,
+				stakedToken,
+				orderExpiration,
+				shortExpiration,
+				nonce
+			) {
+	
+		shorting = await Shorting.deployed()
+		
+		const args = [
+			lenderAddress,
+			lentAmount,
+			lentToken,
+			shorterAddress,
+			stakedAmount,
+			stakedToken,
+			orderExpiration,
+			shortExpiration,
+			nonce
+		];
+		const argTypes = [
+			"address",
+			"uint256",
+			"address",
+			"address",
+			"uint256",
+			"address",
+			"uint256",
+			"uint256",
+			"uint256"
+		];
+
+		const msg = ABI.soliditySHA3(argTypes, args);
+		orderHash = util.bufferToHex(msg);
+		const sig = web3.eth.sign(lenderAddress, util.bufferToHex(msg));
+		const { v, r, s } = util.fromRpcSig(sig);
+		
+		let transaction = await shorting.fill(
+			lenderAddress,
+			lentAmount,
+			lentToken,
+			shorterAddress,
+			stakedAmount,
+			stakedToken,
+			orderExpiration,
+			shortExpiration,
+			nonce,
+			v,
+			util.bufferToHex(r),
+			util.bufferToHex(s)
+		);
+
+
+	}
 
 	it("deploys Shorting contract", async () => {
 		shorting = await Shorting.deployed();
@@ -68,12 +127,12 @@ contract("Shorting", async accounts => {
 		);
 	});
 
-	it("deploys KyberNetwork and deposits 1000 token A and B into it", async () => {
+	it("deploys KyberNetwork and deposits 10000 token A and B into it", async () => {
 		kyberNetwork = await KyberNetwork.deployed();
-		await tokenA.create(kyberNetwork.address, 1000);
-		await tokenB.create(kyberNetwork.address, 1000);
-		eq(await tokenA.balanceOf(kyberNetwork.address), 1000);
-		eq(await tokenB.balanceOf(kyberNetwork.address), 1000);
+		await tokenA.create(kyberNetwork.address, 10000);
+		await tokenB.create(kyberNetwork.address, 10000);
+		eq(await tokenA.balanceOf(kyberNetwork.address), 10000);
+		eq(await tokenB.balanceOf(kyberNetwork.address), 10000);
 	});
 
 	it("approves the shorting contract to withdraw 500 tokenA from user1", async () => {
@@ -109,55 +168,11 @@ contract("Shorting", async accounts => {
 		let orderExpiration = new Date().getTime() + 600000;
 		let shortExpiration = new Date().getTime() + 100000;
 		let nonce = 1;
-
-		const args = [
-			lenderAddress,
-			lentAmount,
-			lentToken,
-			shorterAddress,
-			stakedAmount,
-			stakedToken,
-			orderExpiration,
-			shortExpiration,
-			nonce
-		];
-		const argTypes = [
-			"address",
-			"uint256",
-			"address",
-			"address",
-			"uint256",
-			"address",
-			"uint256",
-			"uint256",
-			"uint256"
-		];
-
-		const msg = ABI.soliditySHA3(argTypes, args);
-		orderHash = util.bufferToHex(msg);
-		const sig = web3.eth.sign(lenderAddress, util.bufferToHex(msg));
-		const { v, r, s } = util.fromRpcSig(sig);
-
-		let transaction = await shorting.fill(
-			lenderAddress,
-			lentAmount,
-			lentToken,
-			shorterAddress,
-			stakedAmount,
-			stakedToken,
-			orderExpiration,
-			shortExpiration,
-			nonce,
-			v,
-			util.bufferToHex(r),
-			util.bufferToHex(s)
-		);
-
-		assert.ok(
-			transaction.logs.find(log => {
-				return log.event === "Filled";
-			})
-		);
+		
+		await fillShort(lenderAddress, lentAmount, lentToken, shorterAddress, stakedAmount,
+			 							stakedToken, orderExpiration, shortExpiration, nonce)
+		
+		
 		eq(await tokenA.balanceOf(shorting.address), 100);
 		eq(await tokenB.balanceOf(shorting.address), 250);
 		eq(await tokenA.balanceOf(user1), 900);
@@ -185,6 +200,53 @@ contract("Shorting", async accounts => {
 			})
 		);
 		eq(await tokenA.balanceOf(user1), 1000);
+		eq(await tokenB.balanceOf(user2), 1000);
+	});
+
+	it("fills an order for user1 to short 250 tokenB from user2 with 100 tokenA deposit", async () => {
+		// Order parameters.
+		let lenderAddress = user2;
+		let lentAmount = 250;
+		let lentToken = tokenB.address;
+		let shorterAddress = user1;
+		let stakedAmount = 100;
+		let stakedToken = tokenA.address;
+		let orderExpiration = new Date().getTime() + 600000;
+		let shortExpiration = new Date().getTime() + 100000;
+		let nonce = 1;
+		
+		await fillShort(lenderAddress, lentAmount, lentToken, shorterAddress, stakedAmount,
+										stakedToken, orderExpiration, shortExpiration, nonce)
+
+		eq(await tokenA.balanceOf(shorting.address), 100);
+		eq(await tokenB.balanceOf(shorting.address), 250);
+		eq(await tokenA.balanceOf(user1), 900);
+		eq(await tokenB.balanceOf(user2), 750);
+	});
+
+	it("allows user1 to trade the borrowed 250 tokenB as part of the short", async () => {
+		let transaction = await shorting.purchase(tokenA.address, orderHash, {
+			from: user1
+		});
+		assert.ok(
+			transaction.logs.find(log => {
+				return log.event === "Traded";
+			})
+		);
+		eq(await tokenA.balanceOf(shorting.address), 350);
+		eq(await tokenB.balanceOf(shorting.address), 0);
+	});
+
+	it("liquidates the position with 1-2 rate of A to B", async () => {
+		await tokenOracle.setRate(tokenB.address, 2 * Math.pow(10, 18));
+		let transaction = await shorting.closePosition(orderHash, { from: user1 });
+		assert.ok(
+			transaction.logs.find(log => {
+				return log.event === "Liquidated";
+			})
+		);
+		eq(await tokenA.balanceOf(user1), 1000);
+		eq(await tokenB.balanceOf(user1), 250);
 		eq(await tokenB.balanceOf(user2), 1000);
 	});
 });
