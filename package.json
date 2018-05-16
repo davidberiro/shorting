@@ -50,15 +50,20 @@
   },
   "dependencies": {
     "babel-polyfill": "^6.26.0",
+    "body-parser": "^1.18.3",
     "dotenv": "^2.0.0",
     "ethereumjs-abi": "^0.6.5",
+    "mongodb": "^3.1.0-beta4",
+    "nodemon": "^1.17.4",
     "react": "^15.4.2",
-    "react-dom": "^15.4.2"
+    "react-dom": "^15.4.2",
+    "solium": "^1.1.7"
   },
   "scripts": {
     "start": "node scripts/start.js",
     "build": "node scripts/build.js",
-    "test": "node scripts/test.js --env=jsdom"
+    "test": "node scripts/test.js --env=jsdom",
+    "dev": "nodemon server/server.js"
   },
   "jest": {
     "collectCoverageFrom": [
